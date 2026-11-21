@@ -1,0 +1,18 @@
+services:
+  web:
+    build: .
+    image: odwolania2json:latest
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./configs:/app/configs:ro
+
+  batch:
+    image: odwolania2json:latest
+    build: .
+    profiles: ["batch"]
+    command: ["python", "-m", "odwolania2json", "process-input", "--input", "/app/input", "--output", "/app/output"]
+    volumes:
+      - ./input:/app/input:ro
+      - ./output:/app/output
+      - ./configs:/app/configs:ro

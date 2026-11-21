@@ -1,74 +1,110 @@
-# Mapowanie pierwszego zarzutu → czynnosc_powod_id (1-12)
+# Mapowanie zaskarżonej czynności → czynnosc_powod_id (1-12).
+#
+# act_patterns — sprawdzane WYŁĄCZNIE w zdaniu o czynności zamawiającego
+#   („Zamawiający w dniu … <czynność>”), które stoi przed pierwszym zarzutem.
+#   Treść zarzutów to szum (wspomina OPZ/SWZ niezależnie od powodu), więc jej nie czytamy.
+#   Wygrywa reguła o najwyższym priority — formy przeczące / zaniechania mają
+#   wyższy priorytet niż formy twierdzące, a OPZ / odpowiedzi / modyfikacja wyższy niż ogólne SWZ.
+#
+# patterns — zapasowe wzorce używane tylko, gdy zdania o czynności nie znaleziono
+#   (wynik ma wtedy niższą pewność w śladzie ekstrakcji).
 reasons:
-  - id: 1
-    opis: Decyzja o odrzuceniu oferty
-    patterns:
-      - odrzuceni[aeu].{0,40}ofert
-      - decyzj[aei].{0,40}odrzuceni
-  - id: 2
-    opis: Ogłoszenie wyboru oferty
-    patterns:
-      - ogłoszeni[aeu].{0,40}wyboru
-      - wybór.{0,20}oferty
-      - wybraniu.{0,30}oferty
-      - informacj[aei].{0,40}wyborze
-  - id: 3
-    opis: Decyzja o wykluczeniu wykonawcy
-    patterns:
-      - wykluczeni[aeu].{0,40}wykonawc
-      - decyzj[aei].{0,40}wykluczeni
-  - id: 4
-    opis: Publikacja specyfikacji warunków zamówienia (SWZ)
-    patterns:
-      - publikacj[aei].{0,40}swz
-      - publikacj[aei].{0,60}specyfikacj
-      - treści\s+swz
-      - specyfikacj[aei]\s+warunków\s+zamówienia
-  - id: 5
-    opis: Modyfikacja treści SWZ
-    patterns:
-      - modyfikacj[aei].{0,40}swz
-      - zmian[aye].{0,40}swz
-      - modyfikacj[aei].{0,60}specyfikacj
-  - id: 6
-    opis: Odpowiedzi/wyjaśnienia do SWZ
-    patterns:
-      - wyjaśnieni[ae].{0,40}swz
-      - odpowiedzi.{0,40}swz
-      - wyjaśnień.{0,40}treści
   - id: 7
     opis: Zaniechanie odrzucenia oferty
+    priority: 100
+    act_patterns:
+      - nie\s+odrzuci\w*
+      - zaniecha\w*\s+odrzuceni\w*
     patterns:
       - zaniechani[aeu].{0,40}odrzuceni
-      - nieodrzuceni[aeu]
-      - zaniecha.{0,40}odrzuc
   - id: 8
     opis: Zaniechanie wykluczenia wykonawcy
+    priority: 100
+    act_patterns:
+      - nie\s+wykluczy\w*
+      - zaniecha\w*\s+wykluczeni\w*
     patterns:
       - zaniechani[aeu].{0,40}wykluczeni
-      - niewykluczeni[aeu]
-      - zaniecha.{0,40}wyklucz
-  - id: 9
-    opis: Decyzja o unieważnieniu postępowania
-    patterns:
-      - unieważnieni[aeu].{0,40}postępowani
-      - decyzj[aei].{0,40}unieważnieni
-      - unieważnieniu\s+postępowania
   - id: 10
     opis: Zaniechanie unieważnienia postępowania
+    priority: 100
+    act_patterns:
+      - nie\s+unieważni\w*
+      - zaniecha\w*\s+unieważnieni\w*
+      - przekaza\w*\s+informacj\w*\s+o\s+wyborze
     patterns:
       - zaniechani[aeu].{0,40}unieważnieni
-      - nieunieważnieni
-      - zaniecha.{0,40}unieważn
+  - id: 9
+    opis: Decyzja o unieważnieniu postępowania
+    priority: 90
+    act_patterns:
+      - unieważni\w*\s+postępowani\w*
+      - o\s+unieważnieniu
+    patterns:
+      - unieważnieni[aeu].{0,40}postępowani
+  - id: 1
+    opis: Decyzja o odrzuceniu oferty
+    priority: 80
+    act_patterns:
+      - odrzuci\w*\s+ofert\w*
+      - o\s+odrzuceniu\s+ofert\w*
+    patterns:
+      - decyzj[aei].{0,40}odrzuceni
+  - id: 3
+    opis: Decyzja o wykluczeniu wykonawcy
+    priority: 80
+    act_patterns:
+      - wykluczy\w*
+      - o\s+wykluczeniu
+      - zawiadomi\w*.{0,80}wykluczeni\w*
+    patterns:
+      - decyzj[aei].{0,40}wykluczeni
+  - id: 2
+    opis: Ogłoszenie wyboru oferty
+    priority: 70
+    act_patterns:
+      - (?:ogłosi\w*|dokona\w*)\s+wyb(?:ór|oru)\s+ofert\w*
+      - wyb(?:ór|oru)\s+oferty\s+najkorzystniejszej
+    patterns:
+      - ogłoszeni[aeu].{0,40}wyboru
+  - id: 5
+    opis: Modyfikacja treści SWZ
+    priority: 60
+    act_patterns:
+      - zmodyfikowa\w*
+      - modyfikacj\w*
+      - zmieni\w*\s+treść
+    patterns:
+      - modyfikacj[aei].{0,40}swz
+  - id: 6
+    opis: Odpowiedzi/wyjaśnienia do SWZ
+    priority: 60
+    act_patterns:
+      - odpowiedzi
+      - wyjaśnie\w*
+    patterns:
+      - wyjaśnieni[ae].{0,40}swz
   - id: 11
     opis: Opis przedmiotu zamówienia (OPZ)
+    priority: 55
+    act_patterns:
+      - opis\w*\s+przedmiotu\s+zamówienia
+      - \bOPZ\b
     patterns:
       - opis.{0,30}przedmiotu\s+zamówienia
-      - \bopz\b
-      - opisu\s+przedmiotu
   - id: 12
     opis: Projektowane postanowienia umowy
+    priority: 55
+    act_patterns:
+      - projektowan\w*\s+postanowie\w*
+      - wz(?:ór|oru)\s+umowy
     patterns:
       - projektowane\s+postanowienia
-      - postanowienia\s+umowy
-      - \bppu\b
+  - id: 4
+    opis: Publikacja specyfikacji warunków zamówienia (SWZ)
+    priority: 40
+    act_patterns:
+      - specyfikacj\w*\s+warunków\s+zamówienia
+      - \bSWZ\b
+    patterns:
+      - publikacj[aei].{0,60}specyfikacj

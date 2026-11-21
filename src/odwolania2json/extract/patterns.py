@@ -24,7 +24,8 @@ RE_KRS = re.compile(
     r"(?i)(?:KRS\s*[:\-]?\s*)((?:\d[\s\-]*){6,10})"
 )
 RE_EMAIL = re.compile(r"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}", re.I)
-RE_DATE = re.compile(r"\b(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4})\b")
+RE_DATE = re.compile(r"\b(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4}|\d{4}[.\-]\d{2}[.\-]\d{2})\b")
+AMOUNT = r"(?:\d{1,3}(?:[ .]\d{3})+|\d+)(?:[,.]\d{2})?"
 RE_BZP = re.compile(
     r"(?i)(?:nr\s*)?(?:ogłoszenia\s*)?(?:w\s*)?BZP\s*[:\-]?\s*"
     r"(\d{4}\s*/\s*BZP\s*\d+(?:\s*/\s*\d+)?|\d{4}/BZP\d+(?:/\d+)?)"
@@ -59,12 +60,15 @@ RE_PL_DATE = re.compile(
     re.I,
 )
 RE_POST_REF = re.compile(
-    r"(?i)(?:nr\s+)?(?:referencyjny\s+sprawy|numer\s+postępowania|nr\s+postępowania|"
+    r"(?i)(?:nr\s+)?(?:referencyjny\s+sprawy|(?<=nr\s)referencyjny|numer\s+referencyjny|"
+    r"numer\s+postępowania|nr\s+postępowania|"
     r"znak\s+sprawy|numer\s+sprawy)\s*[:\-]?\s*([A-Z0-9][A-Z0-9./\-_]{3,40})"
 )
 RE_KWOTA_PLN = re.compile(
-    r"(?i)(?:kwocie|kwota)\s*[:\-]?\s*((?:\d{1,3}(?:[ .]\d{3})*|\d+)(?:[,.]\d{2})?)\s*(?:PLN|zł)?"
+    r"(?i)\bkwo(?:ta|cie|tę)(?:\s+(?:przelewu|operacji|transakcji|zlecenia|płatności|obciążenia|uznania))?"
+    rf"[\s.:…\-]*({AMOUNT})\s*(?:PLN|zł|zl)?(?!\d)"
 )
+LEADER = r"[\s.:…\-]*"
 RE_Z_RACH = re.compile(
     r"(?i)z\s+rachunku\s*(?:nr\s*)?[:\-]?\s*(?:PL)?\s*((?:\d[\s]?){24,28})"
 )
@@ -115,44 +119,53 @@ def extract_ted(text: str) -> tuple[str | None, str | None]:
     return normalize_ted(val), span
 
 
-def extract_date_near_labels(text: str, labels: list[str]) -> tuple[str | None, str | None]:
-    lower = text.lower()
+def _find_label(text: str, label: str, start: int = 0) -> re.Match | None:
+    return re.compile(rf"(?i)(?<![\wąćęłńóśźż]){re.escape(label)}(?![\wąćęłńóśźż])").search(text, start)
+
+
+def extract_date_near_labels(
+    text: str, labels: list[str], fallback_any_date: bool = False, window: int = 60
+) -> tuple[str | None, str | None]:
+    """Date right after one of the labels (in label priority order).
+
+    No label → None. The old "first date anywhere in the document" fallback is
+    opt-in only (fallback_any_date) because it produced dates of letters /
+    generation stamps instead of the operation date.
+    """
     for lab in labels:
-        idx = lower.find(lab.lower())
-        if idx < 0:
-            continue
-        window = text[idx : idx + 160]
-        m = RE_DATE.search(window) or RE_PL_DATE.search(window)
+        m_lab = _find_label(text, lab)
+        while m_lab:
+            chunk = text[m_lab.end() : m_lab.end() + window]
+            m = re.match(rf"{LEADER}(?:dnia\s+)?", chunk)
+            rest = chunk[m.end() :] if m else chunk
+            dm = RE_DATE.match(rest) or RE_PL_DATE.match(rest)
+            if dm:
+                return normalize_date(dm.group(1)), (m_lab.group(0) + chunk[: (m.end() if m else 0) + dm.end()])
+            m_lab = _find_label(text, lab, m_lab.end())
+    if fallback_any_date:
+        m = RE_PL_DATE.search(text) or RE_DATE.search(text)
         if m:
             return normalize_date(m.group(1)), m.group(0)
-    m = RE_PL_DATE.search(text) or RE_DATE.search(text)
-    if m:
-        return normalize_date(m.group(1)), m.group(0)
     return None, None
 
 
 def extract_amount_near_labels(text: str, labels: list[str]) -> tuple[float | None, str | None]:
+    """Amount directly after a 'kwota…' label (same or next line).
+
+    Fees and commissions ('opłata/prowizja 0,00 PLN') and the appeal fee ('wpis')
+    are never read as the transfer amount, because only kwota-labels are accepted.
+    """
     m = RE_KWOTA_PLN.search(text)
     if m:
         return normalize_amount(m.group(1)), m.group(0)
-    lower = text.lower()
     for lab in labels:
-        idx = lower.find(lab.lower())
-        if idx < 0:
+        m_lab = _find_label(text, lab)
+        if not m_lab:
             continue
-        window = text[idx : idx + 120]
-        m = re.search(
-            r"(?i)(?:kwocie|kwota(?:\s+przelewu)?)\s*[:\-]?\s*((?:\d{1,3}(?:[ .]\d{3})*|\d+)(?:[,.]\d{2})?)",
-            window,
-        )
-        if not m:
-            # label on its own line, value on next
-            m = re.search(
-                r"(?i)(?:kwota(?:\s+przelewu)?)\s*[:\-]?\s*(?:\n|\r)\s*((?:\d{1,3}(?:[ .]\d{3})*|\d+)(?:[,.]\d{2})?)",
-                text[idx : idx + 80],
-            )
-        if m:
-            return normalize_amount(m.group(1)), m.group(0)
+        chunk = text[m_lab.end() : m_lab.end() + 80]
+        am = re.match(rf"{LEADER}({AMOUNT})(?:\s*(?:PLN|zł|zl)\b|[ \t]*(?:\n|$))", chunk, re.I)
+        if am:
+            return normalize_amount(am.group(1)), m_lab.group(0) + chunk[: am.end()]
     return None, None
 
 
@@ -175,13 +188,56 @@ def extract_account_near_labels(text: str, labels: list[str]) -> tuple[str | Non
         m = RE_ACCOUNT_LINE.search(window) or RE_ACCOUNT.search(window)
         if m:
             return normalize_account(m.group(1) if m.lastindex else m.group(0)), m.group(0)
-    # Ordered fallback: first = from, second = to
+    # Positional fallback only for the standard two-account layout (payer first,
+    # recipient second). With one or 3+ accounts the role is ambiguous → None.
     accounts = RE_ACCOUNT.findall(text)
-    if "beneficjent" in joined or "odbiorc" in joined or "na rachunek" in joined:
-        if len(accounts) >= 2:
-            return normalize_account(accounts[1]), accounts[1]
-    if accounts:
-        return normalize_account(accounts[0]), accounts[0]
+    if len(accounts) == 2:
+        is_to = "beneficjent" in joined or "odbiorc" in joined or "na rachunek" in joined
+        acc = accounts[1] if is_to else accounts[0]
+        return normalize_account(acc), acc
+    return None, None
+
+
+def extract_block_after_label(
+    text: str,
+    labels: list[str],
+    stop_labels: list[str],
+    max_lines: int = 4,
+) -> tuple[str | None, str | None]:
+    """Value of a label that starts a line; continues over following lines until a stop label.
+
+    Handles 'Tytułem: …', 'Opis\\n…\\n…', 'Tytuł przelewu: „…”.'
+    """
+    lines = text.splitlines()
+    stops = [s.lower() for s in stop_labels]
+
+    def _is_stop(line: str) -> bool:
+        ll = line.strip().lower()
+        return any(ll.startswith(s) for s in stops) or bool(re.match(r"^[A-ZĄĆĘŁŃÓŚŹŻ ]{6,}$", line.strip()))
+
+    for lab in labels:
+        rx = re.compile(rf"(?i)^\s*{re.escape(lab)}(?![\wąćęłńóśźż])\s*[:\-]?\s*(.*)$")
+        for i, line in enumerate(lines):
+            m = rx.match(line)
+            if not m:
+                continue
+            parts = [m.group(1).strip()] if m.group(1).strip() else []
+            for j in range(i + 1, min(i + 1 + max_lines, len(lines))):
+                nxt = lines[j].strip()
+                if not nxt or _is_stop(nxt):
+                    break
+                parts.append(nxt)
+            val = " ".join(parts)
+            inline_stop = re.search(
+                r"(?i)\s(?:" + "|".join(re.escape(s) for s in stops) + r")\.?\s*:", val
+            )
+            if inline_stop:
+                val = val[: inline_stop.start()]
+            val = clean_name(val.strip(" „”\"'"))
+            if val:
+                val = val.rstrip(" .„”\"'") or None
+            if val:
+                return val, line.strip()
     return None, None
 
 
@@ -236,21 +292,41 @@ def extract_postepowanie(text: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-def extract_header_place_date(text: str) -> tuple[str | None, str | None, str | None]:
-    """Return miejscowosc, data_iso, source_span."""
-    head = "\n".join(text.splitlines()[:30])
-    m = RE_HEADER_PLACE_DATE.search(head)
-    if not m:
-        m = RE_HEADER_PLACE_DATE2.search(head)
-    if not m:
-        dm = RE_PL_DATE.search(head) or RE_DATE.search(head)
-        if dm:
-            return None, normalize_date(dm.group(1)), dm.group(0)
-        return None, None, None
-    place = clean_name(m.group(1))
-    if place and place.lower() in {"dnia", "w", "ul", "ul.", "nr", "warszawa"} and "dnia" in m.group(0).lower():
-        # keep real city names including Warszawa
-        pass
-    if place and place.lower() in {"dnia", "w", "ul", "ul.", "nr"}:
-        place = None
-    return place, normalize_date(m.group(2)), m.group(0)
+_DATE_ALT = (
+    r"\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4}|\d{4}-\d{2}-\d{2}|"
+    r"\d{1,2}\s+(?:stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|"
+    r"października|pazdziernika|listopada|grudnia)\s+\d{4}"
+)
+_CITY_WORD = r"[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+(?:-[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+)?"
+RE_HEADER_LINE = re.compile(
+    rf"^\s*(?P<place>{_CITY_WORD}(?:\s+(?:nad|n\.|pod|k\.)?\s*{_CITY_WORD}){{0,2}})\s*,?\s+"
+    rf"(?:(?i:dnia|dn\.)\s*)?(?P<date>(?i:{_DATE_ALT}))\s*(?:r\.?|roku)?\s*$"
+)
+RE_DATE_ONLY_LINE = re.compile(rf"^\s*(?:(?i:dnia|dn\.)\s*)?(?P<date>(?i:{_DATE_ALT}))\s*(?:r\.?|roku)?\s*$")
+_NOT_PLACES = {
+    "zamawiający", "odwołujący", "data", "dnia", "strona", "ul", "nr", "dotyczy", "sygn",
+    "pełnomocnictwo", "pełnomocnik", "mocodawca", "w", "z", "termin",
+}
+
+
+def extract_header_place_date(text: str, max_lines: int = 25) -> tuple[str | None, str | None, str | None]:
+    """Return miejscowosc, data_iso, source_span.
+
+    Only a whole header line 'Miejscowość, [dnia] DATA [r.]' (or a bare date line)
+    counts. Sentences like 'Zamawiający w dniu 20 marca 2026 …' are not headers —
+    when no such line exists both values are None (no guessing).
+    """
+    all_lines = text.splitlines()
+    lines = all_lines[:max_lines]
+    # The header line may also sit right above the 'ODWOŁANIE' title, after the parties block.
+    title = next((i for i, ln in enumerate(all_lines[:120]) if re.match(r"^\s*ODWOŁANIE\s*$", ln)), None)
+    header_zone = all_lines[: max(max_lines, (title or 0) + 1)]
+    for line in header_zone:
+        m = RE_HEADER_LINE.match(line)
+        if m and m.group("place").split()[0].lower() not in _NOT_PLACES:
+            return clean_name(m.group("place")), normalize_date(m.group("date")), line.strip()
+    for line in lines:
+        m = RE_DATE_ONLY_LINE.match(line)
+        if m:
+            return None, normalize_date(m.group("date")), line.strip()
+    return None, None, None

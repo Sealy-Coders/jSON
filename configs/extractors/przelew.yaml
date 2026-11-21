@@ -1,26 +1,37 @@
 document_type: przelew
 fields:
+  # Kolejność etykiet = priorytet. Data wygenerowania potwierdzenia ('wygenerowano')
+  # celowo NIE jest etykietą — to nie jest data operacji.
   - path: przelew_bankowy.data_operacji
     method: labeled_date
     labels:
       - data wykonania
       - data operacji
+      - data transakcji
+      - data realizacji
       - data przelewu
       - data księgowania
-      - data transakcji
+      - data obciążenia
+      - data zlecenia
+      - zrealizowano w dniu
+      - wykonano w dniu
       - w dniu
+  # Tylko etykiety „kwota…” — opłata/prowizja/wpis nigdy nie są kwotą przelewu.
   - path: przelew_bankowy.kwota
     method: labeled_amount
     labels:
       - kwota przelewu
-      - kwota
       - kwota operacji
+      - kwota transakcji
+      - kwota
+      - wartość
   - path: przelew_bankowy.z_rachunku
     method: labeled_account
     labels:
       - z rachunku
       - rachunek nadawcy
       - nr rachunku nadawcy
+      - rachunek zleceniodawcy
       - rachunek obciążany
       - płatnik
   - path: przelew_bankowy.na_rachunek
@@ -38,9 +49,11 @@ fields:
       - numer transakcji
       - nr transakcji
       - numer referencyjny
+      - nr ref
       - referencja
       - id transakcji
     normalize: transaction_id
+  # Blok tytułu: od etykiety do pierwszej linii zaczynającej się od etykiety stopu.
   - path: przelew_bankowy.tytul
     method: labeled_multiline
     labels:
@@ -49,4 +62,29 @@ fields:
       - tytul przelewu
       - tytuł operacji
       - tytuł
+      - opis operacji
+      - opis przelewu
+      - opis
       - szczegóły płatności
+    stop_labels:
+      - nr ref
+      - numer referencyjny
+      - numer transakcji
+      - id transakcji
+      - identyfikator
+      - referencja
+      - wartość
+      - status
+      - waluta
+      - typ operacji
+      - zrealizowano
+      - wykonano
+      - data
+      - kwota
+      - rachunek
+      - opłata/prowizja
+      - prowizja
+      - kanał
+      - potwierdzenie ma charakter
+      - bank nie ponosi
+    max_lines: 4

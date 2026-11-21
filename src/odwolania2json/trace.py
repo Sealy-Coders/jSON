@@ -11,6 +11,8 @@ class TraceCollector:
     pages: list[dict[str, Any]] = field(default_factory=list)
     fields: list[dict[str, Any]] = field(default_factory=list)
     validation: dict[str, Any] = field(default_factory=dict)
+    checks: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[dict[str, Any]] = field(default_factory=list)
 
     def add(
         self,
@@ -21,18 +23,20 @@ class TraceCollector:
         method: str,
         confidence: float,
         source_span: str | None,
+        suppressed: dict[str, Any] | None = None,
     ) -> None:
-        self.fields.append(
-            {
-                "path": path,
-                "value": value,
-                "page": page,
-                "rule_id": rule_id,
-                "method": method,
-                "confidence": confidence,
-                "source_span": (source_span[:240] if isinstance(source_span, str) else source_span),
-            }
-        )
+        entry = {
+            "path": path,
+            "value": value,
+            "page": page,
+            "rule_id": rule_id,
+            "method": method,
+            "confidence": confidence,
+            "source_span": (source_span[:240] if isinstance(source_span, str) else source_span),
+        }
+        if suppressed:
+            entry["suppressed"] = suppressed
+        self.fields.append(entry)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -40,5 +44,7 @@ class TraceCollector:
             "classification": self.classification,
             "pages": self.pages,
             "fields": self.fields,
+            "checks": self.checks,
+            "warnings": self.warnings,
             "validation": self.validation,
         }

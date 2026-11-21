@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -60,6 +61,9 @@ def _norm_value(path: str, value: Any) -> Any:
         return normalize_regon(str(value))
     if leaf == "krs":
         return normalize_krs(str(value))
+    if leaf == "pesel":
+        # Template shows an integer, some gold files store a string — compare digits.
+        return re.sub(r"\D", "", str(value)) or None
     if leaf in {"na_rachunek", "z_rachunku"} or "rachunek" in leaf:
         return normalize_account(str(value))
     if leaf == "numer_bzp" or leaf.endswith("_bzp"):

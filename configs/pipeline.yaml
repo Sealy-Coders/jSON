@@ -6,3 +6,14 @@ ocr_enabled: true
 classifier_model: models/doc_classifier.joblib
 write_trace: true
 configs_dir: configs
+
+# „Nie zgaduj przy braku danych”: wartość skalarna, której pewność (z reguły ekstrakcji)
+# jest niższa niż próg, trafia do JSON jako null. Wartość i powód odrzucenia zostają
+# w śladzie ekstrakcji (pole `suppressed`), więc nic nie ginie bez śladu.
+min_field_confidence: 0.5
+
+# Słownik napraw OCR (diakrytyki, cyfry/litery) — patrz configs/ocr_lexicon.yaml.
+ocr_lexicon: ocr_lexicon.yaml
+
+# Reguły spójności sprawy wielodokumentowej — patrz configs/case_rules.yaml.
+case_rules: case_rules.yaml

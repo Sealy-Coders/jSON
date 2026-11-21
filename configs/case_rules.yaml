@@ -1,0 +1,132 @@
+# Reguły spójności dla wielodokumentowej sprawy odwoławczej.
+#
+# Każda reguła porównuje wartość z jednego typu dokumentu z wartością z drugiego.
+# Ścieżki: kropki + indeksy list, `[*]` = dowolny element listy, np.
+#   Odwolujacy[0].nip, mocodawca[*].data.nip, przelew_bankowy.tytul
+#
+# compare:
+#   equal_id    — identyfikatory po normalizacji do cyfr (NIP, KRS, REGON)
+#   equal_name  — nazwy po normalizacji (wielkość liter, spacje, cudzysłowy, formy prawne)
+#   equal_text  — dokładny tekst po przycięciu spacji
+#   contains    — wartość lewa występuje w tekście prawym (np. nr postępowania w tytule przelewu)
+#   person_in   — imię i nazwisko z lewej występuje wśród osób z prawej (dopuszcza odmianę końcówek)
+#
+# match: all (domyślnie) — każda wartość z lewej musi mieć odpowiednik po prawej;
+#        any — wystarczy jedna (np. przelew do jednego z kilku zamawiających).
+#
+# Wynik reguły: ok | partial | conflict | missing (brak dokumentu lub wartości po którejś stronie).
+# Brak danych NIGDY nie jest traktowany jako konflikt — raportujemy go jako „missing”.
+#
+# fill_missing (globalnie i per reguła): czy uzupełniać brakującą wartość w JSON dokumentu
+# na podstawie innego dokumentu sprawy. Domyślnie WYŁĄCZONE: ocena F1 porównuje JSON
+# z tym, co jest w danym dokumencie, a dopisanie danych spoza niego to zgadywanie.
+# Propozycje uzupełnień zawsze trafiają do raportu sprawy jako „suggestions”.
+fill_missing: false
+
+case_id:
+  # Kolejność źródeł identyfikatora sprawy; pierwsze niepuste wygrywa.
+  sources:
+    - doc: odwolanie
+      path: ZamowieniePubliczne.numer_postepowania
+    - doc: pelnomocnictwo
+      path: __text_postepowanie__
+    - doc: przelew
+      path: __text_postepowanie__
+
+# Ujednolicony widok sprawy: jedna wartość na pole, zbierana z kilku dokumentów.
+#   agree    — wszystkie dokumenty, które mają wartość, są zgodne → value ustawione
+#   single   — wartość tylko w jednym dokumencie → value ustawione, ale oznaczone jako niepotwierdzone
+#   conflict — dokumenty się różnią → value = null, kandydaci w `candidates` (bez zgadywania)
+#   missing  — żaden dokument nie podaje wartości → null
+unify:
+  wykonawca_nazwa:
+    label: Wykonawca (odwołujący / mocodawca)
+    compare: equal_name
+    sources:
+      - {doc: odwolanie, path: "Odwolujacy[0].nazwa"}
+      - {doc: pelnomocnictwo, path: "mocodawca[0].data.nazwa"}
+  wykonawca_nip:
+    label: NIP wykonawcy
+    compare: equal_id
+    sources:
+      - {doc: odwolanie, path: "Odwolujacy[0].nip"}
+      - {doc: pelnomocnictwo, path: "mocodawca[0].data.nip"}
+  wykonawca_krs:
+    label: KRS wykonawcy
+    compare: equal_id
+    sources:
+      - {doc: odwolanie, path: "Odwolujacy[0].krs"}
+      - {doc: pelnomocnictwo, path: "mocodawca[0].data.krs"}
+  numer_postepowania:
+    label: Numer postępowania / sygnatura
+    compare: equal_text
+    sources:
+      - {doc: odwolanie, path: "ZamowieniePubliczne.numer_postepowania"}
+      - {doc: pelnomocnictwo, path: "__text_postepowanie__"}
+      - {doc: przelew, path: "__text_postepowanie__"}
+  zamawiajacy_nazwa:
+    label: Zamawiający
+    compare: equal_name
+    sources:
+      - {doc: odwolanie, path: "Zamawiajacy[0].nazwa"}
+  kwota_przelewu:
+    label: Kwota przelewu (opłata)
+    compare: equal_amount
+    sources:
+      - {doc: przelew, path: "przelew_bankowy.kwota"}
+  data_odwolania:
+    label: Data odwołania
+    compare: equal_text
+    sources:
+      - {doc: odwolanie, path: "OdwolanieKIO.data"}
+
+rules:
+  - id: wykonawca_nip
+    label: NIP odwołującego = NIP mocodawcy
+    left: {doc: odwolanie, path: "Odwolujacy[0].nip"}
+    right: {doc: pelnomocnictwo, path: "mocodawca[*].data.nip"}
+    compare: equal_id
+    severity: high
+
+  - id: wykonawca_krs
+    label: KRS odwołującego = KRS mocodawcy
+    left: {doc: odwolanie, path: "Odwolujacy[0].krs"}
+    right: {doc: pelnomocnictwo, path: "mocodawca[*].data.krs"}
+    compare: equal_id
+    severity: high
+
+  - id: wykonawca_nazwa
+    label: Nazwa odwołującego = nazwa mocodawcy
+    left: {doc: odwolanie, path: "Odwolujacy[0].nazwa"}
+    right: {doc: pelnomocnictwo, path: "mocodawca[*].data.nazwa"}
+    compare: equal_name
+    severity: medium
+
+  - id: pelnomocnik_w_pelnomocnictwie
+    label: Pełnomocnik z odwołania występuje w pełnomocnictwie
+    left: {doc: odwolanie, path: "Odwolujacy[0].pelnomocnik.imie_nazwisko"}
+    right: {doc: pelnomocnictwo, path: "pelnomocnicy[*].imie_nazwisko"}
+    compare: person_in
+    severity: medium
+
+  - id: postepowanie_w_przelewie
+    label: Numer postępowania występuje w tytule przelewu
+    left: {doc: odwolanie, path: "ZamowieniePubliczne.numer_postepowania"}
+    right: {doc: przelew, path: "przelew_bankowy.tytul"}
+    compare: contains
+    severity: medium
+
+  - id: pelnomocnik_w_przelewie
+    label: Pełnomocnicy wymienieni w tytule przelewu (opłata skarbowa)
+    left: {doc: pelnomocnictwo, path: "pelnomocnicy[*].imie_nazwisko"}
+    right: {doc: przelew, path: "przelew_bankowy.tytul"}
+    compare: contains
+    severity: low
+
+  - id: odbiorca_przelewu_zamawiajacy
+    label: Zamawiający z odwołania występuje w dokumencie przelewu
+    left: {doc: odwolanie, path: "Zamawiajacy[*].nazwa"}
+    right: {doc: przelew, path: "__text__"}
+    compare: contains
+    match: any          # przy kilku zamawiających przelew trafia zwykle do jednego (lidera)
+    severity: low

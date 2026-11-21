@@ -10,6 +10,7 @@ gold/
 input/**
 !input/.gitkeep
 *.trace.json
+reports/
 .streamlit/
 dist/
 *.egg-info/

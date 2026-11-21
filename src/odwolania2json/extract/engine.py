@@ -4,7 +4,7 @@ from typing import Any
 
 import regex as re
 
-from odwolania2json.config_loader import load_czynnosc_powod, load_extractor_config
+from odwolania2json.config_loader import load_czynnosc_powod, load_extractor_config, load_pipeline_config
 from odwolania2json.extract import patterns as P
 from odwolania2json.extract.sections import build_sections
 from odwolania2json.normalize import (
@@ -24,8 +24,11 @@ def extract_fields(
     doc_text: DocumentText,
     configs_dir: str | None = None,
     trace: TraceCollector | None = None,
+    min_confidence: float | None = None,
 ) -> dict[str, Any]:
     cfg = load_extractor_config(doc_type, configs_dir)
+    if min_confidence is None:
+        min_confidence = float(load_pipeline_config(configs_dir).get("min_field_confidence", 0.0))
     text = doc_text.plain_text
     sections = build_sections(text, cfg.get("sections"))
     trace = trace or TraceCollector()
@@ -47,6 +50,12 @@ def extract_fields(
         if not handler:
             continue
         value, meta = handler(field, ctx)
+        confidence = (meta or {}).get("confidence", 0.7)
+        threshold = float(field.get("min_confidence", min_confidence))
+        suppressed = None
+        if value is not None and not isinstance(value, (dict, list)) and confidence < threshold:
+            suppressed = {"value": value, "reason": f"confidence {confidence:.2f} < {threshold:.2f}"}
+            value = None
         _assign_path(result, path, value)
         if meta:
             trace.add(
@@ -55,8 +64,9 @@ def extract_fields(
                 page=meta.get("page") or page_for_span(doc_text, meta.get("span")),
                 rule_id=meta.get("rule_id", method),
                 method=method,
-                confidence=meta.get("confidence", 0.7),
+                confidence=confidence,
                 source_span=meta.get("span"),
+                suppressed=suppressed,
             )
     return result
 
@@ -199,9 +209,35 @@ def method_czynnosc_date(field: dict, ctx: dict) -> tuple[Any, dict]:
     return date, _meta(span, "czynnosc_date", 0.75 if date else 0.2)
 
 
+_SENTENCE_END = re.compile(r"(?<!\br)(?<!\bnr)(?<!\bust)(?<!\bart)(?<!\bpkt)(?<!\bo)\.\s+(?=[A-ZĄĆĘŁŃÓŚŹŻ])")
+
+
+def _act_sentence(text: str) -> str | None:
+    """Sentence 'Zamawiający [zawiadomił] w dniu … <czynność>.' preceding the first allegation."""
+    m_z = re.search(r"(?i)\bzarzut", text)
+    head = text[: m_z.start()] if m_z else text[:4000]
+    flat = re.sub(r"\s+", " ", head)
+    cands = list(re.finditer(r"Zamawiający\b(?=[^.]{0,60}?\b(?:w dniu|dnia|zawiadomi))", flat))
+    if not cands:
+        return None
+    sent = flat[cands[-1].start() : cands[-1].start() + 400]
+    end = _SENTENCE_END.search(sent)
+    return sent[: end.start() + 1] if end else sent
+
+
 def method_czynnosc_powod(field: dict, ctx: dict) -> tuple[Any, dict]:
     reasons = load_czynnosc_powod(ctx.get("configs_dir"))
     text = ctx["text"]
+    act = _act_sentence(text)
+    if act:
+        ranked = sorted(reasons, key=lambda r: -int(r.get("priority", 0)))
+        for r in ranked:
+            for pat in r.get("act_patterns", []):
+                m = re.search(pat, act, flags=re.I)
+                if m:
+                    ctx["czynnosc_id"] = r["id"]
+                    ctx["czynnosc_opis"] = r["opis"]
+                    return r["id"], _meta(act[:200], f"czynnosc_powod_{r['id']}_act ({m.group(0)})", 0.9)
     # Prefer the lead-in before first "Zarzut" + first zarzut title (most signal)
     m_z = re.search(r"(?i)zarzut", text)
     if m_z:
@@ -255,7 +291,7 @@ def method_czynnosc_powod(field: dict, ctx: dict) -> tuple[Any, dict]:
 
     ctx["czynnosc_id"] = best_id
     ctx["czynnosc_opis"] = best_opis
-    return best_id, _meta(best_span, f"czynnosc_powod_{best_id}", 0.8 if best_id else 0.2)
+    return best_id, _meta(best_span, f"czynnosc_powod_{best_id}_fallback", 0.6 if best_id else 0.2)
 
 
 def method_czynnosc_opis(field: dict, ctx: dict) -> tuple[Any, dict]:
@@ -278,7 +314,7 @@ def _extract_labeled_party(text: str, label: str) -> str:
     rest = text[m.end() :]
     end = re.search(
         r"(?im)^\s*(?:Zamawiający|Odwołujący|O\s*D\s*W\s*O\s*Ł\s*A\s*N\s*I\s*E|ODWOŁANIE|"
-        r"dotyczy|Zarzut|Pełnomocnik|Działając)\b",
+        r"dotyczy|Zarzut|Pełnomocnik|Działając|Wykonawc\w*\s+wybran\w*|Przystępując\w*|Uczestnik\w*)\b",
         rest,
     )
     if end:
@@ -310,7 +346,14 @@ def method_parties_odwolujacy(field: dict, ctx: dict) -> tuple[Any, dict]:
     section = _extract_labeled_party(ctx["text"], r"Odwołując[yaei]")
     if len(section) < 20:
         section = ctx["sections"].get("odwolujacy") or ctx["text"][:2000]
-    p = _party_from_section(section)
+    # Consortium: '1) Lider Konsorcjum:' … '2) Partner Konsorcjum:' → the first member is the appellant.
+    m_first = re.search(r"(?m)^\s*1\s*\)[^\n]*:\s*$", section)
+    if m_first:
+        m_next = re.search(r"(?m)^\s*2\s*\)", section[m_first.end() :])
+        member = section[m_first.end() : m_first.end() + m_next.start()] if m_next else section[m_first.end() :]
+        p = _party_from_section(member)
+    else:
+        p = _party_from_section(section)
     # pełnomocnik: "reprezentowana przez: adw. NAME"
     imie = None
     m = re.search(
@@ -333,9 +376,15 @@ def method_parties_odwolujacy(field: dict, ctx: dict) -> tuple[Any, dict]:
         parts = imie.split()
         imie = clean_name(" ".join(p for p in parts[:3] if p[0].isupper()))
     kancelaria = None
-    m = re.search(r"(?i)((?:Kancelaria|Kancelarii)[^,\n]{5,90})", section + "\n" + ctx["text"][:3000])
+    m = re.search(
+        r"(?i)adres\w*\s+do\s+korespondencji\s*:\s*([^,\n]*Kancelari[^,\n]*(?:\n(?!\s*(?:ul\.|tel|e-?mail|al\.|pl\.|\d))[^,\n]{3,60})?)",
+        section + "\n" + ctx["text"][:3000],
+    ) or re.search(
+        r"(?i)((?:Kancelaria|Kancelarii)[^,\n]{5,90}(?:\n(?!\s*(?:ul\.|tel|e-?mail|al\.|pl\.|\d))[^,\n]{3,60})?)",
+        section + "\n" + ctx["text"][:3000],
+    )
     if m:
-        kancelaria = clean_name(m.group(1))
+        kancelaria = clean_name(m.group(1).replace("\n", " "))
     mail = None
     # Prefer email in odwołujący block
     mail, _ = P.extract_email(section)
@@ -364,7 +413,40 @@ def method_parties_odwolujacy(field: dict, ctx: dict) -> tuple[Any, dict]:
     return parties, _meta(section[:200], "parties_odwolujacy", 0.85)
 
 
+_NUMBERED_ZAMAWIAJACY = re.compile(r"(?m)^\s*\d{1,2}\s*[\).]\s*Zamawiający\b[^\n]*$")
+
+
+def _numbered_zamawiajacy(text: str) -> list[dict[str, Any]] | None:
+    """'1) Zamawiający – Lider, prowadzący postępowanie:' / '2) Zamawiający – Partner:' blocks."""
+    head = text[:6000]
+    stop = re.search(r"(?im)^\s*(?:dotyczy|ODWOŁANIE|Działając)\b", head)
+    hdrs = [h for h in _NUMBERED_ZAMAWIAJACY.finditer(head) if not stop or h.start() < stop.start()]
+    if len(hdrs) < 2:
+        return None
+    parties = []
+    for i, h in enumerate(hdrs):
+        end = hdrs[i + 1].start() if i + 1 < len(hdrs) else (stop.start() if stop else h.end() + 600)
+        block = head[h.end() : end]
+        p = _party_from_section(block)
+        lead = bool(re.search(r"(?i)lider|prowadząc\w*\s+postępowanie|pełnomocnik\s+zamawiających", h.group(0)))
+        parties.append(
+            {
+                "krs": p["krs"],
+                "nazwa": p["nazwa"],
+                "nip": p["nip"],
+                "regon": p["regon"],
+                "prowadzacy_postepowanie": 1 if lead else 0,
+            }
+        )
+    if parties and not any(x["prowadzacy_postepowanie"] for x in parties):
+        return [dict(x, prowadzacy_postepowanie=None) for x in parties]
+    return parties
+
+
 def method_parties_zamawiajacy(field: dict, ctx: dict) -> tuple[Any, dict]:
+    numbered = _numbered_zamawiajacy(ctx["text"])
+    if numbered:
+        return numbered, _meta(None, "parties_zamawiajacy_numbered", 0.85)
     section = _extract_labeled_party(ctx["text"], r"Zamawiając[yaei]")
     if len(section) < 20:
         m = re.search(r"(?i)zamawiając.{0,900}", ctx["text"], re.S)
@@ -461,22 +543,12 @@ def method_zamowienie(field: dict, ctx: dict) -> tuple[Any, dict]:
 def method_labeled_date(field: dict, ctx: dict) -> tuple[Any, dict]:
     text = ctx["text"]
     labels = field.get("labels", [])
-    # Prefer explicit operation/execution date labels over letter header date
-    for lab in ("data wykonania", "data operacji", "data przelewu", "data księgowania"):
-        m = re.search(
-            rf"(?i){re.escape(lab)}\s*[:\-]?\s*(\d{{1,2}}[.\-/]\d{{1,2}}[.\-/]\d{{4}}|\d{{1,2}}\s+[A-Za-ząćęłńóśźż]+\s+\d{{4}})",
-            text,
-        )
-        if m:
-            return normalize_date(m.group(1)), _meta(m.group(0), "labeled_date", 0.95)
-    m = re.search(
-        r"(?i)w\s+dniu\s+(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4}|\d{1,2}\s+[A-Za-ząćęłńóśźż]+\s+\d{4})",
-        text,
-    )
-    if m:
-        return normalize_date(m.group(1)), _meta(m.group(0), "labeled_date", 0.9)
+    # Labels are tried in YAML order — put operation/execution labels before
+    # order/generation dates ('data zlecenia', 'wygenerowano') in the config.
     date, span = P.extract_date_near_labels(text, labels)
-    return date, _meta(span, "labeled_date", 0.8 if date else 0.2)
+    if date:
+        return date, _meta(span, "labeled_date", 0.9)
+    return None, _meta(None, "labeled_date_not_found", 0.0)
 
 
 def method_labeled_amount(field: dict, ctx: dict) -> tuple[Any, dict]:
@@ -493,16 +565,22 @@ def method_labeled_text(field: dict, ctx: dict) -> tuple[Any, dict]:
     val, span = P.extract_labeled_line(ctx["text"], field.get("labels", []), multiline=False)
     norm = field.get("normalize")
     if norm == "transaction_id":
-        # Also search CEN pattern globally
+        val = normalize_transaction_id(val)
         if not val:
             m = re.search(r"(CEN\d{10,})", ctx["text"], re.I)
             if m:
-                val, span = m.group(1), m.group(1)
-        val = normalize_transaction_id(val)
+                val, span = normalize_transaction_id(m.group(1)), m.group(0)
     return val, _meta(span, "labeled_text", 0.75 if val else 0.2)
 
 
 def method_labeled_multiline(field: dict, ctx: dict) -> tuple[Any, dict]:
+    stop_labels = field.get("stop_labels") or []
+    if stop_labels:
+        val, span = P.extract_block_after_label(
+            ctx["text"], field.get("labels", []), stop_labels, int(field.get("max_lines", 4))
+        )
+        if val:
+            return val, _meta(span, "labeled_block", 0.85)
     val, span = P.extract_labeled_line(ctx["text"], field.get("labels", []), multiline=True)
     if not val:
         m = re.search(
@@ -519,7 +597,204 @@ def method_labeled_multiline(field: dict, ctx: dict) -> tuple[Any, dict]:
     return val, _meta(span, "labeled_multiline", 0.75 if val else 0.2)
 
 
+_ROLE_LINE = re.compile(
+    r"(?i)^(?:wice)?(?:prezes|dyrektor|członek|członkini|prokurent|właściciel|wspólnik|pełnomocnik|"
+    r"zarząd|kierownik|główn|skarbnik|burmistrz|wójt|starosta|komplementariusz|przewodnicząc|"
+    r"mocodawca|podpis|data|miejscowość)"
+)
+_NAME_LINE = re.compile(
+    r"^([A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+(?:-[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+)?"
+    r"(?:\s+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+(?:-[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+)?){1,2})"
+    r"\s*(?:[,–\-]\s*.*)?$"
+)
+_TITLE_PREFIX = re.compile(
+    r"(?i)^\s*(?:PEŁNOMOCNICTWO|PEŁNOMOCNICTWA)(?:\s+(?:PROCESOWE|SZCZEGÓLNE|OGÓLNE|DO\s+REPREZENTOWANIA))?\s*[:\-]?\s*"
+)
+_NAME_END = (
+    r"(?=\s*\(|\s*,\s*(?:ul\.|al\.|z\s+siedzib|KRS|NIP|REGON|adres|wpisan|posiadając|zarejestrowan|\d{2}-\d{3})"
+    r"|\s+z\s+siedzib|\s+niniejszym|\s+udzielam|\s+ustanawiam|\s+upoważniam|\s*$)"
+)
+_MOCODAWCA_NAME_PATTERNS = [
+    ("mocodawca_jest", re.compile(rf"(?im)Mocodawc\w*\s+jest\s+([^\n(]{{3,150}}?){_NAME_END}")),
+    ("dzialajac_w_imieniu", re.compile(
+        rf"(?im)Działając\s+w\s+imieniu\s+(?:i\s+na\s+rzecz\s+)?([^\n(]{{3,150}}?){_NAME_END}"
+    )),
+    ("po_tytule", re.compile(rf"(?m)^\s*PEŁNOMOCNICTWO[^\n]*\n\s*([^\n(]{{3,150}}?){_NAME_END}")),
+    ("line_z_siedziba", re.compile(rf"(?m)^([^\n(]{{3,150}}?)\s+z\s+siedzib")),
+    ("mocodawca_block", re.compile(r"(?im)^\s*Mocodawc\w*\s*:?\s*\n\s*([^\n]{3,150})$")),
+]
+
+
+def _valid_party_name(name: str | None) -> bool:
+    if not name or len(name) < 3:
+        return False
+    if P.RE_DATE.search(name) or P.RE_PL_DATE.search(name):
+        return False
+    if re.search(r"(?i)^(?:§|\d|mocodawc|pełnomocni|niniejszym|działając|ul\.|ja\b|my\b|niżej|wykonawc)", name):
+        return False
+    if sum(ch.isalpha() for ch in name) < 3:
+        return False
+    return sum(ch.isdigit() for ch in name) <= 3
+
+
+_FLAT_NAME = r"[^;()]{3,120}?"
+_CONSORTIUM_MEMBER = re.compile(
+    rf"(?<![\w.])\d\s*\)\s*({_FLAT_NAME}),\s*(?:ul\.|al\.|pl\.|os\.)[^;]*?KRS\s*[:\-]?\s*(\d{{10}})[^;]*?NIP\s*[:\-]?\s*(\d{{10}})"
+)
+_SOLE_TRADER = re.compile(
+    rf"pod\s+firmą\s+({_FLAT_NAME}),\s*(?:ul\.|al\.|pl\.|NIP|z\s+siedzib|\d{{2}}-\d{{3}})"
+)
+_SIGNED_PERSON = re.compile(
+    r"niżej\s+podpisan\w*\s+([A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż\-]+\s+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż\-]+)"
+)
+
+
+def _consortium_members(text: str) -> list[dict[str, Any]]:
+    flat = re.sub(r"\s+", " ", text[:4000])
+    members = []
+    for m in _CONSORTIUM_MEMBER.finditer(flat):
+        name = clean_name(m.group(1))
+        if _valid_party_name(name):
+            members.append({"nazwa": name, "krs": normalize_krs(m.group(2)), "nip": normalize_nip(m.group(3))})
+    return members if len(members) >= 2 else []
+
+
+def _sole_trader(text: str) -> dict[str, Any] | None:
+    flat = re.sub(r"\s+", " ", text[:3000])
+    m = _SOLE_TRADER.search(flat)
+    if not m:
+        return None
+    firm = clean_name(m.group(1))
+    person = _SIGNED_PERSON.search(flat)
+    imie = person.group(1) if person else None
+    if not imie:
+        pm = _PERSON_NAME.search(firm or "")
+        imie = pm.group(1) if pm else None
+    return {"nazwa": firm, "imie_nazwisko": clean_name(imie) if imie else None}
+
+
+def _mocodawca_name(text: str) -> tuple[str | None, str | None]:
+    for rule, rx in _MOCODAWCA_NAME_PATTERNS:
+        for m in rx.finditer(text):
+            name = clean_name(_TITLE_PREFIX.sub("", m.group(1)))
+            if name:
+                name = re.sub(r"\s*\(dalej.*$", "", name).strip(" ,;")
+            if _valid_party_name(name):
+                return name, rule
+    return None, None
+
+
+def _attorney_names(text: str) -> set[str]:
+    names = set()
+    for m in re.finditer(
+        r"(?:adw\.?|r\.\s*pr\.?|radc\w*\s+prawn\w*|adwokat\w*|mec\.)\s+"
+        r"([A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż\-]+\s+[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż\-]+)",
+        text,
+    ):
+        names.add(m.group(1))
+    return names
+
+
+def _signers(text: str, grouped: bool = False) -> Any:
+    """Names printed under dotted signature lines of the grantor.
+
+    Signatures after 'Pełnomocnictwo przyjmuję' and attorney signatures
+    (r. pr./adw.) are skipped — those are the representatives, not the signer.
+    grouped=True returns [(group_label | None, name)], where group_label comes
+    from 'W imieniu <firma>:' lines (consortium documents).
+    """
+    lines = [ln.strip() for ln in text.splitlines()]
+    attorneys = _attorney_names(text)
+    out: list[str] = []
+    groups: list[tuple[str | None, str]] = []
+    group: str | None = None
+    grantor_zone = True
+    for i, ln in enumerate(lines):
+        if re.search(r"(?i)przyjmuję|podpis\s+pełnomocnik", ln):
+            grantor_zone = False
+        gm = re.match(r"(?i)^(?:w\s+imieniu|za)\s+(.+?):?\s*$", ln)
+        if gm and not re.fullmatch(r"[.…_\s]{5,}", ln):
+            group = clean_name(gm.group(1))
+        if not grantor_zone or not re.fullmatch(r"[.…_\s]{5,}", ln):
+            continue
+        for j in range(i + 1, min(i + 4, len(lines))):
+            cand = lines[j]
+            if not cand or re.match(r"(?i)^za\s+", cand) or _ROLE_LINE.match(cand):
+                continue
+            if re.match(r"(?i)^(?:r\.\s*pr\.|adw\.|radca|adwokat|mec\.)", cand):
+                break
+            m = _NAME_LINE.match(cand)
+            if m and not _COMPANY_HINT.search(m.group(1)) and m.group(1) not in attorneys:
+                if m.group(1) not in out:
+                    out.append(m.group(1))
+                    groups.append((group, m.group(1)))
+            break
+    return groups if grouped else out
+
+
+def _norm_company(s: str | None) -> str:
+    return re.sub(r"[^a-ząćęłńóśźż0-9]", "", (s or "").lower())
+
+
 def method_pelnomocnictwo_mocodawca(field: dict, ctx: dict) -> tuple[Any, dict]:
+    text = ctx["text"]
+    members = _consortium_members(text)
+    if members:
+        grouped = _signers(text, grouped=True)
+        result = []
+        for mem in members:
+            key = _norm_company(mem["nazwa"])
+            own = [n for g, n in grouped if g and (_norm_company(g) in key or key in _norm_company(g))]
+            result.append(
+                {
+                    "data": {"imie_nazwisko": None, "krs": mem["krs"], "nazwa": mem["nazwa"], "nip": mem["nip"], "typ": "osoba_prawna"},
+                    "podpisujacy": [{"imie_nazwisko": n} for n in own] or [{"imie_nazwisko": None}],
+                }
+            )
+        return result, _meta(members[0]["nazwa"], "pelnomocnictwo_mocodawca_konsorcjum", 0.85)
+
+    trader = _sole_trader(text)
+    if trader and trader["nazwa"]:
+        nip, _ = P.extract_nip(text)
+        signers = _signers(text) or ([trader["imie_nazwisko"]] if trader["imie_nazwisko"] else [])
+        result = [
+            {
+                "data": {
+                    "imie_nazwisko": trader["imie_nazwisko"],
+                    "krs": None,
+                    "nazwa": trader["nazwa"],
+                    "nip": nip,
+                    "typ": "osoba_fizyczna",
+                },
+                "podpisujacy": [{"imie_nazwisko": s} for s in signers] or [{"imie_nazwisko": None}],
+            }
+        ]
+        return result, _meta(trader["nazwa"], "pelnomocnictwo_mocodawca_jdg", 0.85)
+
+    result, meta = _mocodawca_legacy(field, ctx)
+    name, rule = _mocodawca_name(text)
+    signers = _signers(text)
+    attorneys = _attorney_names(text)
+    for moc in result:
+        data = moc["data"]
+        if len(result) == 1 and name:
+            data["nazwa"] = name
+            meta["rule_id"] = f"pelnomocnictwo_mocodawca_{rule}"
+        elif data.get("nazwa"):
+            cleaned = clean_name(_TITLE_PREFIX.sub("", data["nazwa"]))
+            data["nazwa"] = cleaned if _valid_party_name(cleaned) else None
+        if signers:
+            moc["podpisujacy"] = [{"imie_nazwisko": s} for s in signers]
+        else:
+            moc["podpisujacy"] = [
+                p for p in moc.get("podpisujacy", [])
+                if p.get("imie_nazwisko") and p["imie_nazwisko"] not in attorneys
+                and not _ROLE_LINE.match(p["imie_nazwisko"])
+            ] or [{"imie_nazwisko": None}]
+    return result, meta
+
+
+def _mocodawca_legacy(field: dict, ctx: dict) -> tuple[Any, dict]:
     text = ctx["text"]
     # Spaced title cleanup
     text_work = re.sub(r"(?i)P\s+E\s+Ł\s+N\s+O\s+M\s+O\s+C\s+N\s+I\s+C\s+T\s+W\s+O", "Pełnomocnictwo", text)
@@ -727,6 +1002,8 @@ def method_pelnomocnictwo_pelnomocnicy(field: dict, ctx: dict) -> tuple[Any, dic
         if len(n.split()) < 2:
             continue
         if re.search(r"(?i)pełnomocnict|udzielam|spółki|postępowan|wpisu", n):
+            continue
+        if not all(tok[:1].isupper() for tok in n.split()):
             continue
         cleaned.append(p)
     people = cleaned or [{"imie_nazwisko": None, "pesel": None}]

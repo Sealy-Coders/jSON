@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "odwolania2json"
-version = "1.0.0"
+version = "2.1.0"
 description = "Lokalny pipeline KIO PDF → kanoniczny JSON (Odwołania2json)"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
   "pymupdf>=1.24.0",
   "pytesseract>=0.3.10",
@@ -17,7 +17,6 @@ dependencies = [
   "jsonschema>=4.20.0",
   "scikit-learn>=1.4.0",
   "joblib>=1.3.0",
-  "streamlit>=1.28.0",
   "fastapi>=0.110.0",
   "uvicorn[standard]>=0.27.0",
   "python-multipart>=0.0.9",
@@ -26,6 +25,9 @@ dependencies = [
   "regex>=2023.10.0",
   "numpy>=1.26.0",
 ]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "streamlit>=1.28.0"]
 
 [project.scripts]
 odwolania2json = "odwolania2json.cli:app"

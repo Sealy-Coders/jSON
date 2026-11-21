@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import io
+import platform
+import shutil
+from functools import lru_cache
 from typing import Any
 
 import pymupdf as fitz
@@ -16,6 +19,65 @@ try:
     import pytesseract
 except ImportError:  # pragma: no cover
     pytesseract = None
+
+
+class OcrUnavailable(RuntimeError):
+    """Raised when OCR is requested but Tesseract (or the language pack) is missing."""
+
+
+def install_hint() -> str:
+    system = platform.system()
+    if system == "Darwin":
+        return "brew install tesseract tesseract-lang"
+    if system == "Windows":
+        return "zainstaluj Tesseract z https://github.com/UB-Mannheim/tesseract/wiki (zaznacz język Polish) i dodaj do PATH"
+    return "sudo apt install tesseract-ocr tesseract-ocr-pol"
+
+
+@lru_cache(maxsize=1)
+def ocr_status(lang: str = "pol") -> dict[str, Any]:
+    """Detect Tesseract and language packs once per process; never raises."""
+    status: dict[str, Any] = {
+        "available": False,
+        "version": None,
+        "languages": [],
+        "requested_lang": lang,
+        "lang_available": False,
+        "effective_lang": None,
+        "message": "",
+        "hint": install_hint(),
+    }
+    if pytesseract is None:
+        status["message"] = "Brak pakietu pytesseract (pip install pytesseract)."
+        return status
+    if shutil.which("tesseract") is None and not getattr(pytesseract.pytesseract, "tesseract_cmd", "").startswith("/"):
+        status["message"] = "Tesseract nie jest zainstalowany — skany bez warstwy tekstowej nie zostaną odczytane."
+        return status
+    try:
+        status["version"] = str(pytesseract.get_tesseract_version())
+        status["languages"] = sorted(pytesseract.get_languages(config=""))
+    except Exception as exc:  # noqa: BLE001
+        status["message"] = f"Tesseract nie odpowiada: {exc}"
+        return status
+    status["available"] = True
+    if lang in status["languages"]:
+        status["lang_available"] = True
+        status["effective_lang"] = lang
+        status["message"] = f"OCR gotowy (Tesseract {status['version']}, język {lang})."
+    elif "eng" in status["languages"]:
+        status["effective_lang"] = "eng"
+        status["message"] = (
+            f"Brak języka '{lang}' — OCR działa w trybie 'eng' (gorsze polskie znaki, "
+            "część naprawia słownik OCR)."
+        )
+    else:
+        status["available"] = False
+        status["message"] = f"Tesseract bez języka '{lang}' ani 'eng'."
+    return status
+
+
+def tesseract_available() -> bool:
+    return bool(ocr_status()["available"])
 
 
 def preprocess_image(img: Image.Image) -> Image.Image:
@@ -37,29 +99,42 @@ def preprocess_image(img: Image.Image) -> Image.Image:
     return Image.fromarray(thr)
 
 
-def tesseract_available() -> bool:
-    if pytesseract is None:
-        return False
-    try:
-        pytesseract.get_tesseract_version()
-        return True
-    except Exception:
-        return False
-
-
 def ocr_pil(img: Image.Image, lang: str = "pol") -> str:
-    if not tesseract_available():
-        raise RuntimeError("Tesseract OCR is not installed or not on PATH")
+    status = ocr_status(lang)
+    if not status["available"]:
+        raise OcrUnavailable(f"{status['message']} Instalacja: {status['hint']}")
     processed = preprocess_image(img)
-    config = "--oem 1 --psm 6"
-    return pytesseract.image_to_string(processed, lang=lang, config=config) or ""
+    return pytesseract.image_to_string(processed, lang=status["effective_lang"], config="--oem 1 --psm 6") or ""
 
 
 def ocr_page(page: Any, dpi: int = 200, lang: str = "pol") -> str:
     """OCR a PyMuPDF page object."""
-    if not tesseract_available():
-        raise RuntimeError("Tesseract OCR is not installed or not on PATH")
     zoom = dpi / 72.0
     pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
     img = Image.open(io.BytesIO(pix.tobytes("png")))
     return ocr_pil(img, lang=lang)
+
+
+def page_fallback_text(page: Any) -> str:
+    """Text that exists without OCR: annotations, form fields, link targets.
+
+    Used for image-only pages when Tesseract is unavailable — better than nothing,
+    and never invents content.
+    """
+    parts: list[str] = []
+    try:
+        for annot in page.annots() or []:
+            content = (annot.info or {}).get("content") or ""
+            if content.strip():
+                parts.append(content.strip())
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        for w in page.widgets() or []:
+            name = (w.field_label or w.field_name or "").strip()
+            value = str(w.field_value or "").strip()
+            if value:
+                parts.append(f"{name}: {value}" if name else value)
+    except Exception:  # noqa: BLE001
+        pass
+    return "\n".join(parts)

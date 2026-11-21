@@ -1,0 +1,12 @@
+.venv
+.git
+.pytest_cache
+**/__pycache__
+input
+output
+gold
+reports
+docs
+tests
+frontend/_demo
+*.trace.json

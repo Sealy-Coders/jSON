@@ -1,0 +1,54 @@
+# Słownik napraw typowych błędów OCR w polskich dokumentach KIO.
+#
+# words — słowa z utraconymi znakami diakrytycznymi (częsty efekt Tesseract na słabych skanach).
+#   Klucz = forma zepsuta, wartość = forma poprawna. Dopasowanie po całych słowach,
+#   bez rozróżniania wielkości liter; wielka pierwsza litera jest zachowywana.
+#   Naprawiane są wyłącznie wpisane tu słowa — nie zgadujemy diakrytyków w nazwach własnych.
+#
+# digit_confusables — litery mylone z cyframi. Zamiana działa tylko w kontekście,
+#   gdzie oczekujemy cyfr: po etykietach NIP/KRS/REGON/PESEL, w datach i w długich
+#   ciągach numerów rachunków. Kody postępowań (np. ZS.791.2026) nie są ruszane.
+words:
+  odwolanie: odwołanie
+  odwolania: odwołania
+  odwolujacy: odwołujący
+  odwolujacego: odwołującego
+  odwolujacym: odwołującym
+  zamawiajacy: zamawiający
+  zamawiajacego: zamawiającego
+  zamawiajacym: zamawiającym
+  pelnomocnictwo: pełnomocnictwo
+  pelnomocnictwa: pełnomocnictwa
+  pelnomocnik: pełnomocnik
+  pelnomocnikiem: pełnomocnikiem
+  pelnomocnicy: pełnomocnicy
+  postepowanie: postępowanie
+  postepowania: postępowania
+  postepowaniu: postępowaniu
+  zamowienia: zamówienia
+  zamowien: zamówień
+  odwolawczej: odwoławczej
+  oplata: opłata
+  tytul: tytuł
+  tytulem: tytułem
+  spolka: spółka
+  spolki: spółki
+  odpowiedzialnoscia: odpowiedzialnością
+  uniewaznil: unieważnił
+  uniewaznienie: unieważnienie
+  uniewaznienia: unieważnienia
+  wyjasnienia: wyjaśnienia
+  zarzad: zarząd
+  zarzadu: zarządu
+  wnosze: wnoszę
+
+digit_confusables:
+  O: "0"
+  o: "0"
+  Q: "0"
+  D: "0"
+  l: "1"
+  I: "1"
+  "|": "1"
+  "!": "1"
+  i: "1"
