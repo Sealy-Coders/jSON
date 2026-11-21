@@ -1,0 +1,6 @@
+document_type: pelnomocnictwo
+fields:
+  - path: mocodawca
+    method: pelnomocnictwo_mocodawca
+  - path: pelnomocnicy
+    method: pelnomocnictwo_pelnomocnicy

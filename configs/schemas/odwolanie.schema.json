@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["OdwolanieKIO", "Odwolujacy", "Zamawiajacy", "ZamowieniePubliczne"],
+  "properties": {
+    "OdwolanieKIO": {
+      "type": "object",
+      "required": ["data", "czynnosc_dzien", "czynnosc_powod_id", "czynnosc_opis", "miejscowosc"],
+      "properties": {
+        "data": {"type": ["string", "null"]},
+        "czynnosc_dzien": {"type": ["string", "null"]},
+        "czynnosc_powod_id": {"type": ["integer", "null"], "minimum": 1, "maximum": 12},
+        "czynnosc_opis": {"type": ["string", "null"]},
+        "miejscowosc": {"type": ["string", "null"]}
+      }
+    },
+    "Odwolujacy": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["krs", "nazwa", "nip", "regon", "przez-pelnomocnika", "pelnomocnik"],
+        "properties": {
+          "krs": {"type": ["string", "null"]},
+          "nazwa": {"type": ["string", "null"]},
+          "nip": {"type": ["string", "null"]},
+          "regon": {"type": ["string", "null"]},
+          "przez-pelnomocnika": {"type": "integer", "enum": [0, 1]},
+          "pelnomocnik": {
+            "type": ["object", "null"],
+            "properties": {
+              "imie_nazwisko": {"type": ["string", "null"]},
+              "nazwa": {"type": ["string", "null"]},
+              "mail": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    },
+    "Zamawiajacy": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["krs", "nazwa", "nip", "regon", "prowadzacy_postepowanie"],
+        "properties": {
+          "krs": {"type": ["string", "null"]},
+          "nazwa": {"type": ["string", "null"]},
+          "nip": {"type": ["string", "null"]},
+          "regon": {"type": ["string", "null"]},
+          "prowadzacy_postepowanie": {"type": ["integer", "null"], "enum": [0, 1, null]}
+        }
+      }
+    },
+    "ZamowieniePubliczne": {
+      "type": "object",
+      "required": ["numer_bzp", "numer_postepowania", "numer_ted", "tytul"],
+      "properties": {
+        "numer_bzp": {"type": ["string", "null"]},
+        "numer_postepowania": {"type": ["string", "null"]},
+        "numer_ted": {"type": ["string", "null"]},
+        "tytul": {"type": ["string", "null"]}
+      }
+    }
+  },
+  "additionalProperties": false
+}

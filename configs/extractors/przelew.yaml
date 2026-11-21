@@ -1,0 +1,52 @@
+document_type: przelew
+fields:
+  - path: przelew_bankowy.data_operacji
+    method: labeled_date
+    labels:
+      - data wykonania
+      - data operacji
+      - data przelewu
+      - data księgowania
+      - data transakcji
+      - w dniu
+  - path: przelew_bankowy.kwota
+    method: labeled_amount
+    labels:
+      - kwota przelewu
+      - kwota
+      - kwota operacji
+  - path: przelew_bankowy.z_rachunku
+    method: labeled_account
+    labels:
+      - z rachunku
+      - rachunek nadawcy
+      - nr rachunku nadawcy
+      - rachunek obciążany
+      - płatnik
+  - path: przelew_bankowy.na_rachunek
+    method: labeled_account
+    labels:
+      - rachunek beneficjenta
+      - rachunek odbiorcy
+      - na rachunek
+      - nr rachunku odbiorcy
+      - rachunek uznawany
+      - beneficjent
+  - path: przelew_bankowy.numer_transakcji
+    method: labeled_text
+    labels:
+      - numer transakcji
+      - nr transakcji
+      - numer referencyjny
+      - referencja
+      - id transakcji
+    normalize: transaction_id
+  - path: przelew_bankowy.tytul
+    method: labeled_multiline
+    labels:
+      - tytułem
+      - tytuł przelewu
+      - tytul przelewu
+      - tytuł operacji
+      - tytuł
+      - szczegóły płatności

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Odwołania2json</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,500;8..60,700&family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="brand">
+      <span class="brand-mark">jSON</span>
+      <span class="brand-sub">Odwołania2json</span>
+    </div>
+    <p class="tagline">PDF spraw KIO → kanoniczny JSON. Lokalnie. Na CPU. Open source.</p>
+  </header>
+
+  <main>
+    <section class="upload-panel" id="dropzone" tabindex="0">
+      <input type="file" id="file" accept="application/pdf,.pdf" hidden />
+      <div class="upload-inner">
+        <p class="upload-kicker">Wgraj dokument</p>
+        <h1 class="upload-title">Upuść PDF albo wybierz plik</h1>
+        <p class="upload-hint">Odwołanie, pełnomocnictwo lub potwierdzenie przelewu — klasyfikacja bez patrzenia na nazwę pliku.</p>
+        <button type="button" class="btn" id="pickBtn">Wybierz PDF</button>
+      </div>
+      <div class="upload-status" id="status" hidden></div>
+    </section>
+
+    <section class="results" id="results" hidden>
+      <div class="meta-row">
+        <div>
+          <p class="meta-label">Plik</p>
+          <p class="meta-value" id="fileName">—</p>
+        </div>
+        <div>
+          <p class="meta-label">Typ dokumentu</p>
+          <p class="meta-value type-pill" id="docType">—</p>
+        </div>
+        <div>
+          <p class="meta-label">Klasyfikacja</p>
+          <p class="meta-value" id="clfMethod">—</p>
+        </div>
+        <div class="meta-actions">
+          <button type="button" class="btn btn-ghost" id="downloadBtn">Pobierz JSON</button>
+          <button type="button" class="btn btn-ghost" id="traceToggle">Pokaż ślad</button>
+        </div>
+      </div>
+
+      <div class="panes">
+        <article class="pane">
+          <header class="pane-head">
+            <h2>Wynik JSON</h2>
+            <p>Kanoniczny model zgodny z <code>oczekiwane-json</code></p>
+          </header>
+          <pre class="code" id="jsonOut"></pre>
+        </article>
+        <article class="pane" id="tracePane" hidden>
+          <header class="pane-head">
+            <h2>Ślad ekstrakcji</h2>
+            <p>Skąd wzięło się każde pole (strona, reguła, pewność)</p>
+          </header>
+          <pre class="code" id="traceOut"></pre>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>HackNation 2026 · Urząd Zamówień Publicznych · bez GPU, bez zewnętrznych API LLM</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

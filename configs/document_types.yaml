@@ -1,0 +1,69 @@
+# Rejestr typów dokumentów. Nowy typ = nowy wpis + plik extractors/*.yaml (+ opcjonalnie schema).
+types:
+  odwolanie:
+    label: Odwołanie
+    output_schema: schemas/odwolanie.schema.json
+    extractor: extractors/odwolanie.yaml
+    keywords:
+      - odwołanie
+      - odwolanie
+      - krajowa izba odwoławcza
+      - krajowej izby odwoławczej
+      - wnoszę odwołanie
+      - zarzut
+      - zamawiający
+      - odwołujący
+    keyword_weight: 1.0
+    negative_keywords:
+      - pełnomocnictwo
+      - potwierdzenie przelewu
+      - potwierdzenie operacji
+
+  pelnomocnictwo:
+    label: Pełnomocnictwo
+    output_schema: schemas/pelnomocnictwo.schema.json
+    extractor: extractors/pelnomocnictwo.yaml
+    keywords:
+      - pełnomocnictwo
+      - pelnomocnictwo
+      - udzielam pełnomocnictwa
+      - ustanawiam pełnomocnikiem
+      - mocodawca
+      - pełnomocnicy
+      - pełnomocnik
+      - upoważniam
+    keyword_weight: 1.0
+    negative_keywords:
+      - wnoszę odwołanie
+      - potwierdzenie przelewu
+      - potwierdzenie przelewu krajowego
+
+  przelew:
+    label: Potwierdzenie przelewu
+    output_schema: schemas/przelew.schema.json
+    extractor: extractors/przelew.yaml
+    keywords:
+      - potwierdzenie przelewu
+      - potwierdzenie operacji
+      - potwierdzenie transakcji
+      - przelew krajowy
+      - rachunek nadawcy
+      - rachunek odbiorcy
+      - rachunek beneficjenta
+      - kwota przelewu
+      - data operacji
+      - data wykonania
+      - tytuł przelewu
+      - tytułem
+      - numer transakcji
+      - numer referencyjny
+      - z rachunku
+    keyword_weight: 1.0
+    negative_keywords:
+      - wnoszę odwołanie
+      - udzielam pełnomocnictwa
+      - ustanawiam pełnomocnikiem
+
+unknown_label: unknown
+rule_confidence_threshold: 0.35
+ml_confidence_threshold: 0.40

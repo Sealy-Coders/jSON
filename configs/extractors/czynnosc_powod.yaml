@@ -1,0 +1,74 @@
+# Mapowanie pierwszego zarzutu → czynnosc_powod_id (1-12)
+reasons:
+  - id: 1
+    opis: Decyzja o odrzuceniu oferty
+    patterns:
+      - odrzuceni[aeu].{0,40}ofert
+      - decyzj[aei].{0,40}odrzuceni
+  - id: 2
+    opis: Ogłoszenie wyboru oferty
+    patterns:
+      - ogłoszeni[aeu].{0,40}wyboru
+      - wybór.{0,20}oferty
+      - wybraniu.{0,30}oferty
+      - informacj[aei].{0,40}wyborze
+  - id: 3
+    opis: Decyzja o wykluczeniu wykonawcy
+    patterns:
+      - wykluczeni[aeu].{0,40}wykonawc
+      - decyzj[aei].{0,40}wykluczeni
+  - id: 4
+    opis: Publikacja specyfikacji warunków zamówienia (SWZ)
+    patterns:
+      - publikacj[aei].{0,40}swz
+      - publikacj[aei].{0,60}specyfikacj
+      - treści\s+swz
+      - specyfikacj[aei]\s+warunków\s+zamówienia
+  - id: 5
+    opis: Modyfikacja treści SWZ
+    patterns:
+      - modyfikacj[aei].{0,40}swz
+      - zmian[aye].{0,40}swz
+      - modyfikacj[aei].{0,60}specyfikacj
+  - id: 6
+    opis: Odpowiedzi/wyjaśnienia do SWZ
+    patterns:
+      - wyjaśnieni[ae].{0,40}swz
+      - odpowiedzi.{0,40}swz
+      - wyjaśnień.{0,40}treści
+  - id: 7
+    opis: Zaniechanie odrzucenia oferty
+    patterns:
+      - zaniechani[aeu].{0,40}odrzuceni
+      - nieodrzuceni[aeu]
+      - zaniecha.{0,40}odrzuc
+  - id: 8
+    opis: Zaniechanie wykluczenia wykonawcy
+    patterns:
+      - zaniechani[aeu].{0,40}wykluczeni
+      - niewykluczeni[aeu]
+      - zaniecha.{0,40}wyklucz
+  - id: 9
+    opis: Decyzja o unieważnieniu postępowania
+    patterns:
+      - unieważnieni[aeu].{0,40}postępowani
+      - decyzj[aei].{0,40}unieważnieni
+      - unieważnieniu\s+postępowania
+  - id: 10
+    opis: Zaniechanie unieważnienia postępowania
+    patterns:
+      - zaniechani[aeu].{0,40}unieważnieni
+      - nieunieważnieni
+      - zaniecha.{0,40}unieważn
+  - id: 11
+    opis: Opis przedmiotu zamówienia (OPZ)
+    patterns:
+      - opis.{0,30}przedmiotu\s+zamówienia
+      - \bopz\b
+      - opisu\s+przedmiotu
+  - id: 12
+    opis: Projektowane postanowienia umowy
+    patterns:
+      - projektowane\s+postanowienia
+      - postanowienia\s+umowy
+      - \bppu\b

@@ -1,0 +1,45 @@
+document_type: odwolanie
+sections:
+  odwolujacy:
+    start:
+      - (?i)odwołując[yaei]
+      - (?i)odwolujac[yaei]
+    end:
+      - (?i)zamawiając[yaei]
+      - (?i)zamawiajac[yaei]
+      - (?i)przedmiot\s+zamówienia
+      - (?i)zarzut
+  zamawiajacy:
+    start:
+      - (?i)zamawiając[yaei]
+      - (?i)zamawiajac[yaei]
+    end:
+      - (?i)odwołując[yaei]
+      - (?i)przedmiot
+      - (?i)zarzut
+      - (?i)pełnomocnik
+  zarzuty:
+    start:
+      - (?i)zarzut
+      - (?i)przedmiot\s+odwołania
+      - (?i)zaskarżon
+    end:
+      - (?i)wniosek
+      - (?i)uzasadnienie
+fields:
+  - path: OdwolanieKIO.miejscowosc
+    method: header_place
+  - path: OdwolanieKIO.data
+    method: header_date
+  - path: OdwolanieKIO.czynnosc_dzien
+    method: czynnosc_date
+  - path: OdwolanieKIO.czynnosc_powod_id
+    method: czynnosc_powod
+  - path: OdwolanieKIO.czynnosc_opis
+    method: czynnosc_opis
+  - path: Odwolujacy
+    method: parties_odwolujacy
+  - path: Zamawiajacy
+    method: parties_zamawiajacy
+  - path: ZamowieniePubliczne
+    method: zamowienie

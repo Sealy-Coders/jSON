@@ -1,0 +1,8 @@
+max_pages: 3
+min_chars_per_page: 80
+ocr_dpi: 200
+ocr_lang: pol
+ocr_enabled: true
+classifier_model: models/doc_classifier.joblib
+write_trace: true
+configs_dir: configs

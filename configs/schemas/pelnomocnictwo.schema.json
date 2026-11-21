@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["mocodawca", "pelnomocnicy"],
+  "properties": {
+    "mocodawca": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["data", "podpisujacy"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["imie_nazwisko", "krs", "nazwa", "nip", "typ"],
+            "properties": {
+              "imie_nazwisko": {"type": ["string", "null"]},
+              "krs": {"type": ["string", "null"]},
+              "nazwa": {"type": ["string", "null"]},
+              "nip": {"type": ["string", "null"]},
+              "typ": {"type": "string", "enum": ["osoba_prawna", "osoba_fizyczna"]}
+            }
+          },
+          "podpisujacy": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["imie_nazwisko"],
+              "properties": {
+                "imie_nazwisko": {"type": ["string", "null"]}
+              }
+            }
+          }
+        }
+      }
+    },
+    "pelnomocnicy": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["imie_nazwisko", "pesel"],
+        "properties": {
+          "imie_nazwisko": {"type": ["string", "null"]},
+          "pesel": {"type": ["integer", "string", "null"]}
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

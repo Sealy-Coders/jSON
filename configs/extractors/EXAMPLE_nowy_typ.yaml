@@ -1,0 +1,32 @@
+# Przykład: jak dodać nowy typ dokumentu BEZ zmiany kodu źródłowego.
+#
+# 1. Skopiuj ten plik jako configs/extractors/moj_typ.yaml
+# 2. Dodaj wpis w configs/document_types.yaml:
+#    types:
+#      moj_typ:
+#        label: Mój typ
+#        output_schema: schemas/moj_typ.schema.json
+#        extractor: extractors/moj_typ.yaml
+#        keywords: [fraza1, fraza2]
+# 3. (Opcjonalnie) dodaj JSON Schema w configs/schemas/moj_typ.schema.json
+# 4. Zdefiniuj pola poniżej — użyj istniejących method z silnika
+#    (labeled_date, labeled_text, labeled_amount, labeled_account, ...)
+#    lub rozszerz METHOD_HANDLERS tylko gdy potrzebujesz nowej logiki.
+
+document_type: example_nowy_typ
+fields:
+  - path: dokument.data
+    method: labeled_date
+    labels:
+      - data
+      - dnia
+  - path: dokument.numer
+    method: labeled_text
+    labels:
+      - numer
+      - nr dokumentu
+  - path: dokument.uwagi
+    method: labeled_multiline
+    labels:
+      - uwagi
+      - opis
