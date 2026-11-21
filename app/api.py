@@ -23,6 +23,7 @@ from odwolania2json.pipeline import process_pdf  # noqa: E402
 
 FRONTEND = ROOT / "frontend"
 MAX_FILES = 20
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 
 app = FastAPI(
     title="Odwołania2json",
@@ -51,6 +52,17 @@ async def _read_pdf(file: UploadFile) -> bytes:
     if not raw.lstrip()[:5].startswith(b"%PDF"):
         raise HTTPException(status_code=400, detail=f"Plik {file.filename} ma rozszerzenie .pdf, ale nie jest PDF-em")
     return raw
+
+
+async def _read_document(file: UploadFile) -> bytes:
+    name = (file.filename or "").lower()
+    suffix = Path(name).suffix
+    if suffix in IMAGE_SUFFIXES:
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail=f"Pusty plik: {file.filename}")
+        return raw
+    return await _read_pdf(file)
 
 
 @app.get("/api/health")
@@ -83,8 +95,11 @@ def types() -> dict:
 
 @app.post("/api/extract")
 async def extract(file: UploadFile = File(...)) -> dict:
-    raw = await _read_pdf(file)
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+    raw = await _read_document(file)
+    suffix = Path(file.filename or "").suffix.lower() or ".pdf"
+    if suffix not in IMAGE_SUFFIXES:
+        suffix = ".pdf"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(raw)
         path = Path(tmp.name)
     try:
@@ -112,8 +127,12 @@ async def case(files: list[UploadFile] = File(...), case_id: str | None = Form(N
     with tempfile.TemporaryDirectory() as tmp:
         paths, names = [], []
         for i, f in enumerate(files):
-            raw = await _read_pdf(f)
+            raw = await _read_document(f)
             name = _safe_name(f.filename or f"plik_{i}.pdf")
+            suffix = Path(name).suffix.lower()
+            if suffix not in IMAGE_SUFFIXES and suffix != ".pdf":
+                suffix = ".pdf"
+                name = name.rsplit(".", 1)[0] + suffix
             target = Path(tmp) / f"{i:02d}_{name}"
             target.write_bytes(raw)
             paths.append(target)

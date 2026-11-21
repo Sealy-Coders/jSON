@@ -175,9 +175,9 @@
 
   // ------------------------------------------------------------ upload
   function addFiles(list) {
-    const pdfs = [...list].filter((f) => /\.pdf$/i.test(f.name));
-    if (pdfs.length < list.length) toast("Pominięto pliki inne niż PDF");
-    pdfs.forEach((f) => {
+    const documents = [...list].filter((f) => /\.(pdf|png|jpe?g|tiff?|bmp|webp)$/i.test(f.name));
+    if (documents.length < list.length) toast("Pominięto pliki inne niż PDF lub obraz");
+    documents.forEach((f) => {
       if (!state.files.some((x) => x.name === f.name && x.size === f.size)) state.files.push(f);
     });
     renderChips();
@@ -190,7 +190,9 @@
       .join("");
     $("#run-btn").disabled = !state.files.length;
     $("#clear-btn").disabled = !state.files.length;
-    $("#run-btn").textContent = state.files.length > 1 ? `Analizuj sprawę (${state.files.length} PDF)` : "Analizuj dokument";
+    $("#run-btn").textContent = state.files.length > 1
+      ? `Analizuj sprawę (${state.files.length} plików)`
+      : "Analizuj dokument";
   }
 
   // ------------------------------------------------------------ render: case

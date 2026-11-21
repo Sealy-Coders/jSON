@@ -104,7 +104,9 @@ def ocr_pil(img: Image.Image, lang: str = "pol") -> str:
     if not status["available"]:
         raise OcrUnavailable(f"{status['message']} Instalacja: {status['hint']}")
     processed = preprocess_image(img)
-    return pytesseract.image_to_string(processed, lang=status["effective_lang"], config="--oem 1 --psm 6") or ""
+    primary = pytesseract.image_to_string(processed, lang=status["effective_lang"], config="--oem 1 --psm 6") or ""
+    fallback = pytesseract.image_to_string(processed, lang=status["effective_lang"], config="--oem 1 --psm 3") or ""
+    return fallback if len(fallback.strip()) > len(primary.strip()) else primary
 
 
 def ocr_page(page: Any, dpi: int = 200, lang: str = "pol") -> str:

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pymupdf as fitz
+from PIL import Image, ImageOps
 
 from odwolania2json.normalize import clean_ocr_page, fix_ocr_text
 
@@ -37,6 +38,12 @@ class DocumentText:
         return "\n".join(p.text for p in self.pages if p.text).strip()
 
 
+def _clean_image_text(text: str, ocr_cleanup: bool, configs_dir: str | None) -> str:
+    if ocr_cleanup:
+        return clean_ocr_page(text, configs_dir)
+    return fix_ocr_text(text)
+
+
 def extract_pdf_text(
     pdf_path: str | Path,
     max_pages: int = 3,
@@ -56,6 +63,46 @@ def extract_pdf_text(
     from odwolania2json import ocr as ocr_mod
 
     path = Path(pdf_path)
+    image_suffixes = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
+    if path.suffix.lower() in image_suffixes:
+        try:
+            image = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"Nie można otworzyć obrazu '{path.name}': {exc}") from exc
+
+        status = ocr_mod.ocr_status(ocr_lang) if ocr_enabled else {
+            "available": False,
+            "message": "OCR wyłączony w pipeline.yaml",
+            "hint": ocr_mod.install_hint(),
+        }
+        text = ""
+        used_ocr = False
+        method = "no_text_ocr_unavailable"
+        warnings: list[dict[str, Any]] = []
+        if status["available"]:
+            try:
+                text = _clean_image_text(ocr_mod.ocr_pil(image, lang=ocr_lang), ocr_cleanup, configs_dir)
+                used_ocr = bool(text.strip())
+                method = f"tesseract_ocr:{status.get('effective_lang')}" if used_ocr else "no_text_ocr_unavailable"
+            except Exception as exc:  # noqa: BLE001
+                warnings.append({"code": "ocr_failed", "page": 1, "message": f"OCR obrazu nie powiódł się: {exc}"})
+        if not text.strip():
+            warnings.append(
+                {
+                    "code": "ocr_unavailable",
+                    "pages": [1],
+                    "message": "Obraz nie został odczytany, a OCR jest niedostępny: " + status["message"].rstrip(".") + ".",
+                    "hint": status.get("hint"),
+                }
+            )
+        if used_ocr and not status.get("lang_available"):
+            warnings.append({"code": "ocr_lang_fallback", "message": status["message"], "hint": status.get("hint")})
+        return DocumentText(
+            path=path,
+            pages=[PageText(page_number=1, text=text, char_count=len(text.strip()), used_ocr=used_ocr, method=method)],
+            warnings=warnings,
+        )
+
     try:
         doc = fitz.open(path)
     except Exception as exc:  # noqa: BLE001

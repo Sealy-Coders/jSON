@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pymupdf as fitz
 import pytest
+from PIL import Image, ImageDraw
 
 from odwolania2json import ocr
 from odwolania2json.demo import PRZELEW, run_demo
@@ -59,6 +60,18 @@ def test_scan_without_ocr_uses_sidecar_text(tmp_path, no_ocr):
     assert trace["document_type"] == "przelew"
     assert data
     assert any(w["code"] == "sidecar_text" for w in trace["warnings"])
+
+
+def test_image_upload_is_processed_by_ocr(tmp_path):
+    image = Image.new("RGB", (1200, 300), "white")
+    ImageDraw.Draw(image).text((60, 120), "ODWOLANIE NIP 5260250995", fill="black")
+    path = tmp_path / "skan.png"
+    image.save(path)
+
+    data, trace = process_pdf(path, write_trace=False)
+    assert trace["pages"][0]["used_ocr"]
+    assert trace["pages"][0]["method"].startswith("tesseract_ocr:")
+    assert trace["pages"][0]["char_count"] > 0
 
 
 def test_encrypted_pdf_has_readable_error(tmp_path):
