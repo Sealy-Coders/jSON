@@ -88,7 +88,7 @@ Ocena organizatora: drzewo `input/caseN/*.pdf` → `output/caseN/<ta_sama_nazwa>
 | Ewaluacja | `eval-noise` (F1 przy syntetycznym szumie OCR), `synthetic.py`, 34 testy na syntetycznych tekstach |
 | UI | nowy interfejs: wiele PDF naraz, widok sprawy, kafelki dokumentów z badge'ami typu i pewności, tabela pól (strona, reguła, pewność, fragment źródłowy), podgląd JSON z kopiowaniem i pobieraniem |
 
-Wynik na zbiorze treningowym UZP (60 spraw + negatywy): **micro F1 0.850 → 0.9985** (szczegóły w [sekcji 13](#13-ewaluacja-f1-szum-ocr-testy)).
+Wynik na zbiorze treningowym UZP (60 spraw + negatywy): **micro F1 0.850 → 1.000** (szczegóły w [sekcji 13](#13-ewaluacja-f1-szum-ocr-testy)).
 
 ---
 
@@ -212,7 +212,7 @@ jSON/
 ├── frontend/                  ← nowe UI (HTML/CSS/JS, bez bundlera i CDN)
 ├── scripts/                   ← prepare_eval_split.py, train_classifier.py
 ├── models/doc_classifier.joblib
-├── tests/                     ← 42 testy (syntetyczne teksty, bez danych treningowych)
+├── tests/                     ← 47 testów (syntetyczne teksty, bez danych treningowych)
 ├── run.sh / run.bat / Makefile← 2.1: jedna komenda do wszystkiego
 ├── Dockerfile, docker-compose.yml
 └── start.sh / start.bat / start-web.sh   (zgodność wstecz → run.sh)
@@ -408,11 +408,11 @@ Porównanie po spłaszczonych ścieżkach z normalizacją wartości per pole; z�
 
 | Typ | v1 | v2 |
 |---|---|---|
-| odwołanie | 0.90 | **0.998** |
+| odwołanie | 0.90 | **1.000** |
 | pełnomocnictwo | 0.68 | **1.000** |
-| przelew | 0.88 | **0.997** |
+| przelew | 0.88 | **1.000** |
 | negatywy (`{}`) | 0.60 | **1.000** |
-| **micro** | **0.850** | **0.9985** (P 0.999 · R 0.998) |
+| **micro** | **0.850** | **1.000** (P 1.000 · R 1.000, 2048 TP) |
 
 > Uwaga: reguły stroiliśmy na tych samych 60 sprawach, więc to wynik optymistyczny. Na nowych układach dokumentów spodziewaj się niższego F1. Strojenie odbywa się głównie w YAML (etykiety, stop-etykiety, wzorce czynności), więc nowy układ zwykle wymaga dopisania etykiety, a nie zmiany kodu.
 
@@ -424,10 +424,10 @@ python -m odwolania2json eval-noise --rates 0,0.05,0.1,0.2
 
 | szum | F1 (z czyszczeniem OCR) | F1 (bez czyszczenia) |
 |---|---|---|
-| 0 | 0.9985 | — |
-| 0.05 | 0.977 | — |
-| 0.10 | 0.955 | 0.896 |
-| 0.20 | 0.917 | 0.799 |
+| 0 | 1.000 | — |
+| 0.05 | 0.979 | — |
+| 0.10 | 0.957 | 0.896 |
+| 0.20 | 0.919 | 0.799 |
 
 Szum (`synthetic.corrupt_text`, deterministyczny z `--seed`): utrata diakrytyków, `0→O`, `1→l` w liczbach, homoglify cyrylicy, podwójne spacje.
 
@@ -437,7 +437,7 @@ Szum (`synthetic.corrupt_text`, deterministyczny z `--seed`): utrata diakrytykó
 ./run.sh test          # albo: python -m pytest -q
 ```
 
-42 testy na fikcyjnych tekstach (bez danych treningowych): naprawy OCR i sumy kontrolne, zasada „nie zgaduj”, ekstrakcja z tekstu dla 3 typów, ślad, sprawa (zgodna / konflikt NIP / brak danych / brak dokumentu), odporność na szum, praca bez Tesseracta (skan → `{}` + ostrzeżenie, plik `.ocr.txt`), zaszyfrowany PDF, IBAN z błędną sumą zachowany w JSON, demo, `doctor`.
+47 testów na fikcyjnych tekstach (bez danych treningowych): naprawy OCR i sumy kontrolne, decyzje administracyjne → `{}`, kwota z walutą przed liczbą, e-mail z polskimi znakami, data czynności z właściwego zdania, zasada „nie zgaduj”, ekstrakcja z tekstu dla 3 typów, ślad, sprawa (zgodna / konflikt NIP / brak danych / brak dokumentu), odporność na szum, praca bez Tesseracta (skan → `{}` + ostrzeżenie, plik `.ocr.txt`), zaszyfrowany PDF, IBAN z błędną sumą zachowany w JSON, demo, `doctor`.
 
 ---
 

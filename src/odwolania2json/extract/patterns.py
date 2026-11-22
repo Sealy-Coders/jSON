@@ -23,7 +23,12 @@ RE_REGON = re.compile(
 RE_KRS = re.compile(
     r"(?i)(?:KRS\s*[:\-]?\s*)((?:\d[\s\-]*){6,10})"
 )
-RE_EMAIL = re.compile(r"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}", re.I)
+RE_EMAIL = re.compile(r"[A-Z0-9ąćęłńóśźż._%+\-]+@[A-Z0-9ąćęłńóśźż.\-]+\.[A-Z]{2,}", re.I)
+_PL_ASCII = str.maketrans("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ", "acelnoszzACELNOSZZ")
+
+
+def fold_email(value: str) -> str:
+    return value.translate(_PL_ASCII).lower()
 RE_DATE = re.compile(r"\b(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4}|\d{4}[.\-]\d{2}[.\-]\d{2})\b")
 AMOUNT = r"(?:\d{1,3}(?:[ .]\d{3})+|\d+)(?:[,.]\d{2})?"
 RE_BZP = re.compile(
@@ -66,7 +71,7 @@ RE_POST_REF = re.compile(
 )
 RE_KWOTA_PLN = re.compile(
     r"(?i)\bkwo(?:ta|cie|tę)(?:\s+(?:przelewu|operacji|transakcji|zlecenia|płatności|obciążenia|uznania))?"
-    rf"[\s.:…\-]*({AMOUNT})\s*(?:PLN|zł|zl)?(?!\d)"
+    rf"[\s.:…\-]*(?:(?:PLN|zł|zl)\s*)?({AMOUNT})\s*(?:PLN|zł|zl)?(?!\d)"
 )
 LEADER = r"[\s.:…\-]*"
 RE_Z_RACH = re.compile(
@@ -104,7 +109,7 @@ def extract_email(text: str) -> tuple[str | None, str | None]:
     m = RE_EMAIL.search(text)
     if not m:
         return None, None
-    return m.group(0).lower(), m.group(0)
+    return fold_email(m.group(0)), m.group(0)
 
 
 def extract_bzp(text: str) -> tuple[str | None, str | None]:
@@ -163,7 +168,9 @@ def extract_amount_near_labels(text: str, labels: list[str]) -> tuple[float | No
         if not m_lab:
             continue
         chunk = text[m_lab.end() : m_lab.end() + 80]
-        am = re.match(rf"{LEADER}({AMOUNT})(?:\s*(?:PLN|zł|zl)\b|[ \t]*(?:\n|$))", chunk, re.I)
+        am = re.match(
+            rf"{LEADER}(?:(?:PLN|zł|zl)\s*)?({AMOUNT})(?:\s*(?:PLN|zł|zl)\b|[ \t]*(?:\n|$))", chunk, re.I
+        )
         if am:
             return normalize_amount(am.group(1)), m_lab.group(0) + chunk[: am.end()]
     return None, None

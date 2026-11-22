@@ -145,6 +145,10 @@ def process_text(
     return process_document_text(doc, configs_dir)
 
 
+def find_pdfs(input_dir: Path) -> list[Path]:
+    return sorted(p for p in input_dir.rglob("*") if p.is_file() and p.suffix.lower() == ".pdf")
+
+
 def process_input_tree(
     input_dir: str | Path,
     output_dir: str | Path,
@@ -162,7 +166,7 @@ def process_input_tree(
     output_dir = Path(output_dir)
     results = []
     per_folder: dict[Path, list[dict[str, Any]]] = {}
-    for pdf in sorted(input_dir.rglob("*.pdf")):
+    for pdf in find_pdfs(input_dir):
         rel = pdf.relative_to(input_dir)
         out_json = output_dir / rel.with_suffix(".json")
         out_json.parent.mkdir(parents=True, exist_ok=True)

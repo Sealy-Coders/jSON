@@ -68,7 +68,8 @@ def rule_scores(text: str, types_cfg: dict[str, Any]) -> dict[str, float]:
     if re.search(
         r"(?i)ogłoszenie\s+o\s+zamówieniu|dziennik\s+urz[eę]dowy|broszura|formularz\s+jpk|"
         r"wyrok|orzeczenie|skład\s+orzekający|^postanowienie\b|postanowienie\s*\n|"
-        r"prowadzenie\s+postępowania\s+odwoławczego|sygn\.\s*akt",
+        r"prowadzenie\s+postępowania\s+odwoławczego|sygn\.\s*akt|"
+        r"\bdecyzja\s+nr|nie\s+służy\s+odwołanie|kodeks\w*\s+postępowania\s+administracyjnego",
         text,
     ) and not re.search(
         r"(?i)wnosz[eę]\s+(?:niniejsze\s+)?odwołanie|udzielam\s+pełnomocnict|ustanawiam\s+pełnomocn|potwierdzenie\s+przelewu",

@@ -8,7 +8,7 @@ import typer
 
 from odwolania2json.config_loader import ROOT, load_pipeline_config
 from odwolania2json.evaluate import evaluate_trees
-from odwolania2json.pipeline import process_input_tree, process_pdf
+from odwolania2json.pipeline import find_pdfs, process_input_tree, process_pdf
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="Odwołania2json — PDF KIO → JSON")
 
@@ -80,7 +80,7 @@ def process_input_cmd(
         typer.secho(f"✘ Brak katalogu wejściowego: {input}", fg="red")
         typer.echo("  Utwórz go i włóż PDF-y, np. input/case1/odwolanie.pdf")
         raise typer.Exit(2)
-    if not any(input.rglob("*.pdf")):
+    if not find_pdfs(input):
         typer.secho(f"⚠ W {input} nie ma żadnych plików PDF — nic do zrobienia.", fg="yellow")
         raise typer.Exit(0)
     _ocr_banner()

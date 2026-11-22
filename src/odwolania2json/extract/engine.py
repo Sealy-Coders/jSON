@@ -185,6 +185,11 @@ def method_header_date(field: dict, ctx: dict) -> tuple[Any, dict]:
 
 def method_czynnosc_date(field: dict, ctx: dict) -> tuple[Any, dict]:
     text = ctx["text"]
+    act = _act_sentence(text)
+    if act:
+        date, span = P.extract_date_near_labels(act, ["w dniu", "dnia"])
+        if date:
+            return date, _meta(span, "czynnosc_date", 0.8)
     # Prefer sentence describing the challenged act near first zarzut
     m_z = re.search(r"(?i)zarzut", text)
     focus = text[max(0, (m_z.start() if m_z else 400) - 500) : (m_z.start() if m_z else 0) + 200]
@@ -397,7 +402,7 @@ def method_parties_odwolujacy(field: dict, ctx: dict) -> tuple[Any, dict]:
         emails = re.findall(P.RE_EMAIL.pattern, ctx["text"][:4000], flags=re.I)
         # skip zamawiający contact if two emails — take last in odwołujący area
         if emails:
-            mail = emails[-1].lower() if len(emails) > 1 else emails[0].lower()
+            mail = P.fold_email(emails[-1] if len(emails) > 1 else emails[0])
     przez = 1 if (imie or kancelaria or re.search(r"(?i)reprezentowan|pełnomocnik", section)) else 0
     pelnomocnik = {"imie_nazwisko": imie, "nazwa": kancelaria, "mail": mail} if przez else None
     parties = [

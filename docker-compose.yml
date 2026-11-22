@@ -11,7 +11,15 @@ services:
     image: odwolania2json:latest
     build: .
     profiles: ["batch"]
-    command: ["python", "-m", "odwolania2json", "process-input", "--input", "/app/input", "--output", "/app/output"]
+    user: "0:0"
+    command:
+      - sh
+      - -c
+      - |
+        python -m odwolania2json process-input --input /app/input --output /app/output --no-trace
+        rc=$$?
+        chown -R "$$(stat -c %u:%g /app/output)" /app/output
+        exit $$rc
     volumes:
       - ./input:/app/input:ro
       - ./output:/app/output
